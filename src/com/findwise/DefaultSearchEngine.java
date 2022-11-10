@@ -15,7 +15,7 @@ public class DefaultSearchEngine implements SearchEngine {
 
     @Override
     public void indexDocument(String id, String content) {
-        if (documentIndex.get(id) != null) {
+        if (!documentIndex.containsKey(id)) {
             documentIndex.put(id, computeOccurrenceOfWords(content));
         } else {
             logger.warning("Document with ID was not overwritten: " + id);
@@ -28,26 +28,29 @@ public class DefaultSearchEngine implements SearchEngine {
 
     @Override
     public List<IndexEntry> search(String term) {
-        Map<String, Long> relativeFrequencyMap = documentIndex.entrySet().stream().collect(
+        Map<String, Double> relativeFrequencyMap = documentIndex.entrySet().stream().collect(
                 Collectors.toMap(
                         Map.Entry::getKey,
                         entry -> {
                             Map<String, Long> occurrenceMap = entry.getValue();
                             Long rawFrequency = occurrenceMap.getOrDefault(term, 0L);
-                            Long sumOfAllWordsInDocuments = occurrenceMap.values().stream().reduce(0L, Long::sum);
-                            if (sumOfAllWordsInDocuments != 0) return rawFrequency / sumOfAllWordsInDocuments;
-                            else return 0L;
+                            long sumOfAllWordsInDocuments = occurrenceMap.values().stream().reduce(0L, Long::sum);
+                            if (sumOfAllWordsInDocuments != 0) {
+                                return (double) rawFrequency / sumOfAllWordsInDocuments;
+                            } else {
+                                return 0.0;
+                            }
                         }));
         long numberOfOccurrenceInAllDocuments = relativeFrequencyMap.values().stream().filter(i -> i > 0).count();
         long numberOfAllDocuments = documentIndex.size();
 
         List<IndexEntry> indexEntries = relativeFrequencyMap.entrySet().stream()
+                .filter(entry -> entry.getValue() > 0)
                 .map(entry -> {
-                    double score = entry.getValue() * Math.log(numberOfOccurrenceInAllDocuments / numberOfAllDocuments);
-                    IndexEntry indexEntry = new DefaultIndexEntry(entry.getKey(), score);
-                    return indexEntry;
+                    double score = entry.getValue() * Math.log((double) numberOfAllDocuments / numberOfOccurrenceInAllDocuments);
+                    return new DefaultIndexEntry(entry.getKey(), score);
                 })
-                .sorted(Comparator.comparingDouble(IndexEntry::getScore))
+                .sorted(Comparator.comparingDouble(IndexEntry::getScore).reversed())
                 .collect(Collectors.toList());
         return indexEntries;
     }
